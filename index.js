@@ -188,7 +188,7 @@ async function run() {
                     price: product.price,
                     sizes: product.sizes,
                     colors: product.colors,
-                    imageLink: product.imageLink
+                    images: product.images
                 }
             }
             const result = await productsColl.updateOne(filter, updatedDoc);
