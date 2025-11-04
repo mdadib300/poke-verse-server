@@ -4,6 +4,8 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config()
 const port = process.env.PORT || 5000;
+const nodemailer = require("nodemailer");
+
 
 // Middleware
 app.use(cors());
@@ -12,6 +14,104 @@ app.use(express.json());
 app.get('/', (req, res) => {
     res.send('Hello World!')
 })
+
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: true,
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+    },
+});
+
+//order confirmation to user + admin
+const sendOrderEmails = async (order) => {
+  try {
+    // Convert cart items to HTML string
+    const cartItemsHtml = order.cartItems.map(cartItem => {
+      return `
+        <tr>
+          <td style="padding: 5px; border: 1px solid #ddd;">${cartItem.title}</td>
+          <td style="padding: 5px; border: 1px solid #ddd;">${cartItem.size}</td>
+          <td style="padding: 5px; border: 1px solid #ddd;">${cartItem.color || ''}</td>
+          <td style="padding: 5px; border: 1px solid #ddd;">${cartItem.quantity}</td>
+          <td style="padding: 5px; border: 1px solid #ddd;">${cartItem.price} BDT</td>
+        </tr>
+      `;
+    }).join('');
+
+    // ---------------- Email to Customer ----------------
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: order.email,
+      subject: "Order Confirmation - PokéVerse BD",
+      html: `
+        <h2>Hi ${order.name},</h2>
+        <p>Thank you for your order!</p>
+        <p>Here are your order details:</p>
+        <table style="border-collapse: collapse; width: 100%;">
+          <thead>
+            <tr>
+              <th style="padding: 5px; border: 1px solid #ddd;">Product</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Size</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Color</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Quantity</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cartItemsHtml}
+          </tbody>
+        </table>
+        <p><b>Total Amount To Pay: ${order.amount} BDT</b></p>
+        <p>Best Regards,</p>
+        <p>PokéVerse BD Team</p>
+      `,
+    });
+
+    // ---------------- Email to Admin ----------------
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to: process.env.SMTP_USER, // Admin email
+      subject: "New Order Received",
+      html: `
+        <h3>New Order Received</h3>
+        <p><b>Customer:</b> ${order.name}</p>
+        <p><b>Email:</b> ${order.email}</p>
+        <p><b>Phone:</b> ${order.phone}</p>
+        <p><b>Address:</b> ${order.address}</p>
+        <p><b>Delivery Location:</b> ${order.deliveryLocation}</p>
+        <p><b>Ordered at:</b> ${order.orderTime.slice(0, 10)}</p>
+        <p><b>Payment Method:</b> ${order.paymentMethod}</p>
+        <p><b>Discount:</b> ${order.discountPercent || 0}%</p>
+        <p><b>Total Amount:</b> ${order.amount} BDT</p>
+        <h4>Products:</h4>
+        <table style="border-collapse: collapse; width: 100%;">
+          <thead>
+            <tr>
+              <th style="padding: 5px; border: 1px solid #ddd;">Product</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Size</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Color</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Quantity</th>
+              <th style="padding: 5px; border: 1px solid #ddd;">Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cartItemsHtml}
+          </tbody>
+        </table>
+      `,
+    });
+
+    console.log("✅ Order emails sent successfully.");
+  } catch (error) {
+    console.error("❌ Error sending emails:", error);
+  }
+};
+
+
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@xpointcluster.j3qynmm.mongodb.net/?appName=XpointCluster`;
@@ -226,10 +326,17 @@ async function run() {
             res.send(result);
         })
 
-        // posting orders to orders server
+
+        // Place order and send emails
         app.post('/orders', async (req, res) => {
             const order = req.body;
+
+            // INSERT order into DB
             const result = await ordersColl.insertOne(order);
+
+            // ---- CHANGE: Send email notifications ----
+            await sendOrderEmails(order);
+
             res.send(result);
         });
 
