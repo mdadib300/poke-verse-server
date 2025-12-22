@@ -284,6 +284,7 @@ async function run() {
             const updatedDoc = {
                 $set: {
                     title: product.title,
+                    description: product.description,
                     category: product.category,
                     price: product.price,
                     sizes: product.sizes,
